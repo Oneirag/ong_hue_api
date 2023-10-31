@@ -113,6 +113,14 @@ def get_csfrmiddlewaretoken(response: requests.Response, index: int = 0) -> str:
     return csrfmiddlewaretoken[index]
 
 
+def is_hdfs_s3(path: str) -> bool:
+    """Checks if an address is a HDFS or a S3 root"""
+    valid_starts = ["/", "s3a://"]
+    if not any(path.startswith(start) for start in valid_starts):
+        raise ValueError(f"{path=} must start with {'or '.join(valid_starts)}")
+    return True
+
+
 if __name__ == '__main__':
     print(res := add_variables('select * from a where a=${a} and b=${b} and c=\"${notfound}\"',
                                dict(a=1)))

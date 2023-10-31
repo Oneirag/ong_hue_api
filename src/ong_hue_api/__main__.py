@@ -5,6 +5,7 @@ import sys
 from ong_hue_api.hue import Hue
 from ong_hue_api.internal_storage import KeyringStorage
 from ong_hue_api.logs import create_logger
+from ong_hue_api.utils import is_hdfs_s3
 
 executable = "hue_api"
 
@@ -92,11 +93,11 @@ def main():
     kr = KeyringStorage(username=args.user, check=False)
     hue = Hue(show_notifications=not args.quiet, debug=args.debug, keyring_storage=kr)
     for sql, name in zip(args.sql, names):
-        if sql.startswith("/"):
+        try:
+            is_hdfs_s3(sql)     # Raises exception if not hdfs
             # Ignore filename when downloading hdfs files, uses remote filename
             hue.download_file(sql, local_filename=None, path=args.path)
-        else:
-
+        except ValueError:
             variables = None if not args.variable_key else \
                 {k: v for k, v in zip(args.variable_key, args.variable_value)}
 

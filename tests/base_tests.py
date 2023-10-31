@@ -15,6 +15,13 @@ def get_iterable(x):
         return x
 
 
+def remove_temp_files(path: str):
+    for f in os.listdir(path):
+        full_path_f = os.path.join(path, f)
+        if os.path.isfile(full_path_f) and not f.endswith(".log"):
+            os.remove(full_path_f)
+
+
 class BaseTestHueApi(unittest.TestCase):
 
     path = None
@@ -25,7 +32,7 @@ class BaseTestHueApi(unittest.TestCase):
     def setUpClass(cls):
         cls.path = os.path.join(os.getcwd(), "data")
         os.makedirs(cls.path, exist_ok=True)
-        cls.remove_temp_files()
+        remove_temp_files(cls.path)
         cls.keyring = KeyringStorage(username=test_username, check=False)
         if test_password:
             cls.keyring.set_password(test_password)
@@ -37,14 +44,6 @@ class BaseTestHueApi(unittest.TestCase):
     def setUp(self):
         self.sample_queries = sample_queries
         self.hdfs_path = sample_hdfs_path
-
-    @classmethod
-    def remove_temp_files(cls):
-        """Removes files in cls.path (but keeps log files)"""
-        for f in os.listdir(cls.path):
-            full_path_f = cls.full_path(cls, f)
-            if os.path.isfile(full_path_f) and not f.endswith(".log"):
-                os.remove(full_path_f)
 
     def full_path(self, filename: str) -> str:
         return os.path.join(self.path, filename)
@@ -75,3 +74,6 @@ class BaseTestHueApi(unittest.TestCase):
 
     def tearDown(self):
         self.remove_temp_files()
+
+    def remove_temp_files(self):
+        remove_temp_files(self.path)

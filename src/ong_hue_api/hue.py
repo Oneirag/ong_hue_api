@@ -16,7 +16,7 @@ from ong_hue_api.internal_storage import KeyringStorage
 from ong_hue_api.logs import create_logger
 from ong_hue_api.payload_utils import format_payload
 from ong_hue_api.utils import handle_exceptions, get_query_chunked, remove_header, new_uuid, timestamp, \
-    get_csfrmiddlewaretoken, get_filename, add_variables, check_content_type
+    get_csfrmiddlewaretoken, get_filename, add_variables, check_content_type, is_hdfs_s3
 
 
 class Hue:
@@ -227,7 +227,7 @@ class Hue:
 
     @property
     def default_db(self) -> str:
-        return self.databases[-1]
+        return self.databases[0]
 
     def _login(self, user: str, password: str):
         """Executes login, gets cookies and updates header for later queries. Raises ValueError if login failed"""
@@ -535,9 +535,8 @@ class Hue:
     def filebrowser(self, path: str, filter: str = None) -> dict:
         """Gets a dictionary {name: path} with the list of contents of a given path, optionally
         returning files that contain a certain pattern"""
-        valid_starts = ["/", "s3a://"]
-        if not any(path.startswith(start) for start in valid_starts):
-            raise ValueError(f"{path=} must start with {'or '.join(valid_starts)}")
+
+        ok = is_hdfs_s3(path)       # Will raise exception if fails
         retval = dict()
         has_more_pages = True
         page_num = 1
