@@ -12,11 +12,32 @@ from tkinter import messagebox
 from tkinter.simpledialog import Dialog
 
 import keyring
-import win32security
 import requests
 
-from ong_hue_api import name
+from ong_hue_api import name, is_windows, is_macos
+if is_windows:
+    import win32security
+# if is_macos:
+#     from keyrings.osx_keychain_keys.backend import OSXKeychainKeysBackend, OSXKeychainKeyType, OSXKeyChainKeyClassType
+#
+#     backend = OSXKeychainKeysBackend(
+#         key_type=OSXKeychainKeyType.RSA,  # Key type, e.g. RSA, RC, DSA, ...
+#         key_class_type=OSXKeyChainKeyClassType.Private,  # Private key, Public key, Symmetric-key
+#         key_size_in_bits=4096,
+#         is_permanent=True,  # If set, saves the key in keychain; else, returns a transient key
+#         use_secure_enclave=False,  # Saves the key in the T2 (TPM) chip, requires a code-signed interpreter
+#         access_group=None,  # Limits key management and retrieval to set group, requires a code-signed interpreter
+#         is_extractable=True
+#         # If set, private key is extractable; else, it can't be retrieved, but only operated against
+#     )
+#
+#     keyring.set_keyring(backend)
+
+
 from ong_hue_api.logs import create_logger
+
+
+
 
 
 def check_server(server: str) -> str | None:
@@ -79,14 +100,14 @@ class KeyringStorage:
     def username(self):
         """Username, read from USERNAME environ variable"""
         if not self.__username:
-            self.__username = os.environ['USERNAME']
+            self.__username = os.environ.get('USERNAME', os.environ.get("USER"))
         return self.__username
 
     @property
     def domain(self):
         """Domain, read from USERDOMAIN environ variable"""
         if self.__domain is None:
-            self.__domain = os.environ['USERDOMAIN']
+            self.__domain = os.environ.get('USERDOMAIN')
         return self.__domain
 
     @property
@@ -142,14 +163,17 @@ class KeyringStorage:
         else:
             try:
                 self.logger.debug(f"Checking password of {self.domain}\\{self.username}")
-                hUser = win32security.LogonUser(
-                    self.username,
-                    self.domain,
-                    password,
-                    # win32security.LOGON32_LOGON_NETWORK,
-                    win32security.LOGON32_LOGON_INTERACTIVE,
-                    win32security.LOGON32_PROVIDER_DEFAULT
-                )
+                if is_windows:
+                    hUser = win32security.LogonUser(
+                        self.username,
+                        self.domain,
+                        password,
+                        # win32security.LOGON32_LOGON_NETWORK,
+                        win32security.LOGON32_LOGON_INTERACTIVE,
+                        win32security.LOGON32_PROVIDER_DEFAULT
+                    )
+                else:
+                    return True     # Not windows...password is assumed to be valid
             except Exception as e:
                 self.logger.error(e.strerror)
                 return False
@@ -202,6 +226,9 @@ class KeyringStorage:
 
     def __write_dict(self, key: str, input_dict: dict):
         """Writes given dict to the given key in the keyring"""
+        if is_macos:
+            # TODO: make dictionaries store properly in keyrings in macos
+            return      # Dictionaries cannot be properly saved in macos
         value = pickle.dumps(input_dict)
         keyring.set_password(key, self.username, value.decode(self.PICKLE_ENCODING))
         value2 = keyring.get_password(key, self.username)
@@ -209,6 +236,8 @@ class KeyringStorage:
 
     def __read_dict(self, key: str) -> dict:
         """Reads a dict pickled in the storage"""
+        if is_macos:
+            return dict()       # In macos, dictionaries cannot properly be saved
         value = keyring.get_password(key, self.username)
         retval = pickle.loads(value.encode(self.PICKLE_ENCODING)) if value is not None else dict()
         return retval
@@ -320,7 +349,17 @@ class ConfigDialog(Dialog):
         return 1
 
 
+def delete_all():
+    """Deletes all keyring values for current logged-in user and for demo user"""
+    for username in (None, "demo"):
+        info = KeyringStorage(create_logger(), username=username, check=False)
+        info.delete(all=True)
+
+
 if __name__ == '__main__':
+
+    delete_all()
+    exit(0)
 
     info = KeyringStorage(create_logger())
 

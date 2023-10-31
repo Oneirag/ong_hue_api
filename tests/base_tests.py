@@ -66,7 +66,7 @@ class BaseTestHueApi(unittest.TestCase):
                                  f"File {single_retval} could not be downloaded")
                 self.assertTrue(os.path.isfile(single_retval),
                                 f"File {single_retval} was not created")
-                self.assertEqual(os.path.getsize(single_retval), single_expected_size,
+                self.assertEqual(single_expected_size, os.path.getsize(single_retval),
                                  f"Incorrect file size for {single_retval}")
             else:
                 # File must NOT exist:

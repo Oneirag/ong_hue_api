@@ -3,9 +3,9 @@ import logging.handlers
 import os
 from functools import partial
 
-from win11toast import notify
-
-from ong_hue_api import name
+from ong_hue_api import name, is_windows
+if is_windows:
+    from win11toast import notify
 
 
 class NotificationHandler(logging.Handler):

@@ -1,6 +1,6 @@
 [project]
 name = "ong_hue_api"
-version = "0.2.0"
+version = "0.3.0"
 # license = {file = "LICENSE.txt"}
 authors = [
     { email = "oneirag@yahoo.es", name = "Oscar Neira" }
@@ -9,17 +9,9 @@ readme = "README.md"
 requires-python = ">=3.8"
 description = "Tool to wrap HUE website like if it were an API"
 
-dependencies = [
-    "requests >=2.31.0",
-    "pandas", # for reading data
-    "openpyxl", # for writing xlsx files
-    "keyring", # For securely storing/retrieving passwords
-    "pywin32", # Another one for windows interface, used for testing username and password
-    "win11toast", # For sending notifications
-    "tqdm",     # Nice progress bar
-#    "loguru",   # Easier logs
-    "pip-system-certs", # Avoids "self signed certificate in certificate chain" error in corporate networks
-]
+dynamic = ["dependencies"]
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
 
 [tool.setuptools.packages.find]
 # scanning for namespace packages is true by default in pyproject.toml, so

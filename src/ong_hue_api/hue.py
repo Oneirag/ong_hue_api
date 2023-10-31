@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import logging
-import sys
 import urllib.parse
+import os
 
 import pandas as pd
 import requests
 from tqdm import tqdm
-from win11toast import notify
+
 
 from ong_hue_api import *
+if is_windows:
+    from win11toast import notify
 from ong_hue_api.internal_storage import KeyringStorage
 from ong_hue_api.logs import create_logger
 from ong_hue_api.payload_utils import format_payload
@@ -76,10 +78,9 @@ class Hue:
         """
         if self.debug or level != self._DEBUG:
             getattr(self.__logger, level)(msg)
-        if show_notification and self.show_notifications:
+        if show_notification and self.show_notifications and is_windows:
             if isinstance(show_notification, str):
-                if sys.platform == 'win32':
-                    notify(msg, on_click=show_notification)
+                notify(msg, on_click=show_notification)
             else:
                 notify(msg)
         if exception is not None:
@@ -455,13 +456,16 @@ class Hue:
         else:
             return
 
-    def get_row_number(self, query: str) -> int:
-        """Gets the number of rows of a certain query"""
+    def get_row_number(self, query: str) -> int | None:
+        """Gets the number of rows of a certain query. Returns None on any error"""
         row_query = f"with t as ( {query} ) select count(*) from t"
         if self.editor == "hive":
             row_query += " limit 1"     # it does not work without it
         res = self.execute_query(row_query, format="pandas", log_query=False)
-        return res.iat[0, 0]
+        if res is not None and not res.empty:
+            return res.iat[0, 0]
+        else:
+            return None
 
     @handle_exceptions
     def execute_query(self, query: str, database: str = None, path: str = None, name: str = None,
@@ -491,6 +495,9 @@ class Hue:
         chunk_rows = chunk_rows if is_csv else None
         if chunk_rows:
             rows = self.get_row_number(query)
+            if rows is None:
+                self.log(self._DEBUG, "There was an error in the query. See previous logs")
+                return
         else:
             rows = None
         order_by = "1"  # default value: order by first column

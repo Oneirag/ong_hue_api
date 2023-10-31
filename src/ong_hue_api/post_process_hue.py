@@ -1,5 +1,7 @@
 import pandas as pd
-from win32com import client, __gen_path__
+from ong_hue_api import is_windows
+if is_windows:
+    from win32com import client, __gen_path__
 import logging
 import re
 from pathlib import Path
@@ -71,6 +73,8 @@ def csv2df(file: str, convert_dates: bool=True) -> pd.DataFrame:
 
 def df2openxls(df: pd.DataFrame, workbook: str, sheet: str):
     """Writes given df into given already opened excel workbook in given sheet"""
+    if not is_windows:
+        return      # windows only!
     xls = Excel()
     xls.set_df(df, workbook, sheet)
 

@@ -12,21 +12,21 @@ test_server = "https://demo.gethue.com/"                            # Use None t
 
 sample_queries = {
     "simple_query_df":
-        QueryConfig(query="SELECT * FROM default.visit_csv",
-                    expected_size=262),
+        QueryConfig(query="SELECT * FROM default.ong_hive_test",
+                    expected_size=1576),
     "simple_query":
-        QueryConfig(query="SELECT * FROM default.visit_csv",
-                    expected_size=262, format="csv"),
+        QueryConfig(query="SELECT * FROM default.ong_hive_test",
+                    expected_size=1576, format="csv"),
     "simple_query_pandas":
-        QueryConfig(query="SELECT * FROM default.visit_csv",
-                    expected_size=5568, format="pandas"),
+        QueryConfig(query="SELECT * FROM default.ong_hive_test",
+                    expected_size=1576, format="pandas"),
     "bad_query":
         QueryConfig(query="SELECT * FROM default.non_existing_table",
                     expected_size=-1),  # Negative size: file is expected not to have been created
     "simple_query_params":
         QueryConfig(
-            query="SELECT * FROM default.visit_csv where user_id= '${user_id}'",
-            expected_size=58, variables=dict(user_id="u4")),
+            query="SELECT * FROM default.ong_hive_test where number= ${number}",
+            expected_size=76, variables=dict(number=25)),
     "sample_file_downloads": [
         QueryConfig(query="s3a://demo-gethue/data/web_logs/index_data.csv",
                     expected_size=6199593, expected_filename="index_data.csv"),
