@@ -3,6 +3,7 @@ import os
 import sys
 
 from ong_hue_api.hue import Hue
+from ong_hue_api.internal_storage import KeyringStorage
 from ong_hue_api.logs import create_logger
 
 executable = "hue_api"
@@ -47,6 +48,8 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument("-p", "--path", help="Directorio en el que se guardan los ficheros",
                     default=os.getcwd(), required=False)
+parser.add_argument("-u", "--user", help="Usuario",
+                    default=None, required=False)
 parser.add_argument("-f", "--format", help="Formato de ficheros (csv o xls)",
                     default="csv", required=False, choices=['csv', 'xls'])
 parser.add_argument("-s", "--sql",
@@ -70,7 +73,6 @@ parser.add_argument("-d", "--debug",
                     help="Mostrar información de depuración",
                     required=False, action="store_true", default=False)
 
-
 def main():
     """Command line wrapper for ong_hue_api"""
     try:
@@ -87,7 +89,8 @@ def main():
         names = [f"Consulta{i + 1}" for i in range(len(args.sql))]
     elif len(names) < len(args.sql):
         names = [f"{args.name[0]}{i + 1}" for i in range(len(args.sql))]
-    hue = Hue(show_notifications=not args.quiet, debug=args.debug)
+    kr = KeyringStorage(username=args.user, check=False)
+    hue = Hue(show_notifications=not args.quiet, debug=args.debug, keyring_storage=kr)
     for sql, name in zip(args.sql, names):
         if sql.startswith("/"):
             # Ignore filename when downloading hdfs files, uses remote filename

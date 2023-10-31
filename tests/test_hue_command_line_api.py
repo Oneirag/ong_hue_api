@@ -11,12 +11,16 @@ from tests.config_test import sample_queries
 class TestCommandLineScript(BaseTestHueApi):
     def setUp(self):
         super().setUp()
+        # Needs ong_hue_api to be installed
         self.cmd = "python -m ong_hue_api.__main__"
         self.default_file = self.full_path("Consulta1.csv")
 
     def execute(self, cmdline: str):
+        cmdLine = f" -p \"{self.path}\" " + cmdline
+        if self.keyring.username:
+            cmdLine += f" -u \"{self.keyring.username}\" " + cmdline
         # process = subprocess.run(self.cmd + " " + cmdline, capture_output=True)
-        process = subprocess.Popen(self.cmd + f" -p \"{self.path}\" " + cmdline, stdout=subprocess.PIPE)
+        process = subprocess.Popen(self.cmd + cmdline, stdout=subprocess.PIPE, shell=True)
         for c in iter(lambda: process.stdout.read(1), b""):
             sys.stdout.write(c.decode('latin1'))
     pass
@@ -59,7 +63,7 @@ class TestCommandLineScript(BaseTestHueApi):
         cmd_line = ""
         expected_file = []
         expected_size = []
-        for query in (sample_queries['sample_download1'], sample_queries['sample_download2']):
+        for query in sample_queries['sample_file_downloads']:
             expected_file.append(self.full_path(query.expected_filename))
             expected_size.append(query.expected_size)
             cmd_line += f" -s \"{query.query}\""

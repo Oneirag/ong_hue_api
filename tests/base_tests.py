@@ -25,7 +25,7 @@ class BaseTestHueApi(unittest.TestCase):
     def setUpClass(cls):
         cls.path = os.path.join(os.getcwd(), "data")
         os.makedirs(cls.path, exist_ok=True)
-        cls.remove_temp_files(cls)
+        cls.remove_temp_files()
         cls.keyring = KeyringStorage(username=test_username, check=False)
         if test_password:
             cls.keyring.set_password(test_password)
