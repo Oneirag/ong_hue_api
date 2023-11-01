@@ -284,7 +284,8 @@ class ConfigDialog(Dialog):
         Dialog.destroy(self)
 
     def body(self, master):
-        self.geometry("300x180")
+        # self.geometry("300x180")
+        self.geometry("350x200")    # Make it a bit bigger so it can be better seen in macos
         padx = 5
         pady = 2
 
@@ -347,8 +348,9 @@ def delete_all():
 
 if __name__ == '__main__':
 
-    delete_all()
-    exit(0)
+
+    # delete_all()
+    # exit(0)
 
     info = KeyringStorage(create_logger())
 
