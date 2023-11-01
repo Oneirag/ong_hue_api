@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import pickle
+import time
 import urllib.parse
 from tkinter import *
 from tkinter import messagebox
@@ -14,30 +15,11 @@ from tkinter.simpledialog import Dialog
 import keyring
 import requests
 
-from ong_hue_api import name, is_windows, is_macos
+from ong_hue_api import name, is_windows
 if is_windows:
     import win32security
-# if is_macos:
-#     from keyrings.osx_keychain_keys.backend import OSXKeychainKeysBackend, OSXKeychainKeyType, OSXKeyChainKeyClassType
-#
-#     backend = OSXKeychainKeysBackend(
-#         key_type=OSXKeychainKeyType.RSA,  # Key type, e.g. RSA, RC, DSA, ...
-#         key_class_type=OSXKeyChainKeyClassType.Private,  # Private key, Public key, Symmetric-key
-#         key_size_in_bits=4096,
-#         is_permanent=True,  # If set, saves the key in keychain; else, returns a transient key
-#         use_secure_enclave=False,  # Saves the key in the T2 (TPM) chip, requires a code-signed interpreter
-#         access_group=None,  # Limits key management and retrieval to set group, requires a code-signed interpreter
-#         is_extractable=True
-#         # If set, private key is extractable; else, it can't be retrieved, but only operated against
-#     )
-#
-#     keyring.set_keyring(backend)
-
 
 from ong_hue_api.logs import create_logger
-
-
-
 
 
 def check_server(server: str) -> str | None:
@@ -226,25 +208,32 @@ class KeyringStorage:
 
     def __write_dict(self, key: str, input_dict: dict):
         """Writes given dict to the given key in the keyring"""
-        if is_macos:
-            # TODO: make dictionaries store properly in keyrings in macos
-            return      # Dictionaries cannot be properly saved in macos
         value = pickle.dumps(input_dict)
-        keyring.set_password(key, self.username, value.decode(self.PICKLE_ENCODING))
+        if not is_windows:
+            value = urllib.parse.quote(value.decode(self.PICKLE_ENCODING))
+        else:
+            value = value.decode(self.PICKLE_ENCODING)
+        keyring.set_password(key, self.username, value)
         value2 = keyring.get_password(key, self.username)
-        assert value2 == value.decode(self.PICKLE_ENCODING), "Dictionary was not properly stored in keyring"
+        assert value2 == value, "Dictionary was not properly stored in keyring"
 
     def __read_dict(self, key: str) -> dict:
         """Reads a dict pickled in the storage"""
-        if is_macos:
-            return dict()       # In macos, dictionaries cannot properly be saved
         value = keyring.get_password(key, self.username)
-        retval = pickle.loads(value.encode(self.PICKLE_ENCODING)) if value is not None else dict()
+        if is_windows:
+            retval = pickle.loads(value.encode(self.PICKLE_ENCODING)) if value is not None else dict()
+        else:
+            retval = pickle.loads(urllib.parse.unquote(value).encode(self.PICKLE_ENCODING))
         return retval
 
     def get_cookies(self) -> dict:
         """Returns a dict of cookies from the keyring storage"""
-        return self.__read_dict(self.key_cookies)
+        cookies = self.__read_dict(self.key_cookies)
+        expired = any(c.expires < time.time() for c in cookies)
+        if expired:
+            return dict()       # Empty dict, cookies are expired
+        else:
+            return cookies
 
     @property
     def hue_server(self):

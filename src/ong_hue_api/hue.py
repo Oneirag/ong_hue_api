@@ -76,8 +76,8 @@ class Hue:
          a text with the path of a file to show notification that opens the given file when clicking notification
         :return:
         """
-        if self.debug or level != self._DEBUG:
-            getattr(self.__logger, level)(msg)
+        if self.debug or level != self._DEBUG:      # Makes it a little faster...
+            getattr(self.__logger, level)(msg, stacklevel=2)
         if show_notification and self.show_notifications and is_windows:
             if isinstance(show_notification, str):
                 notify(msg, on_click=show_notification)
@@ -140,8 +140,7 @@ class Hue:
         self.editor = editor_type or "impala"  # Defaults to impala
         self.show_notifications = show_notifications
         self.debug = debug
-        self.__logger = create_logger(path or os.getcwd())
-        self.__logger.setLevel(logging.DEBUG if debug else logging.INFO)
+        self.__logger = create_logger(path or os.getcwd(), level=logging.DEBUG if self.debug else logging.INFO)
         # Skips check of username and server if fast is true
         self.keyring_storage = keyring_storage or KeyringStorage(self.__logger, check=not fast)
         self.keyring_storage.logger = self.__logger
@@ -192,7 +191,11 @@ class Hue:
             self.log(self._INFO, "Login process finished")
         self.headers["X-CSRFToken"] = self.__requests_session.cookies['csrftoken']
         interpreters = self.ajax(self._endpoint_get_config)['app_config']['editor']['interpreters']
-        self.editor_cfg = [e for e in interpreters if e['name'] == self.editor.capitalize()][0]
+        interpreters_dict = {e['name']: e for e in interpreters}
+        self.editor_cfg = interpreters_dict.get(self.editor.capitalize())
+        if self.editor_cfg is None:
+            raise ValueError(f"Editor of type {self.editor} not found. "
+                             f"Valid editors: {','.join(list(interpreters_dict.keys()))}")
         self.log(self._DEBUG, f"Editor config: {self.editor_cfg}")
         self._create_notebook_impala_session(force_new_login)
         self.snippet_id = new_uuid()
@@ -352,9 +355,9 @@ class Hue:
 
         mydata = format_payload(notebook=notebook, snippet=snippet)
         # First: close statement and then execute impala
-        self.log(self._DEBUG, "Closing session")
+        self.log(self._DEBUG, "Closing statement")
         close = self.ajax(self._endpoint_close_statement, payload=mydata)
-        self.log(self._DEBUG, "Session closed")
+        self.log(self._DEBUG, "Statement closed")
 
         self.log(self._DEBUG, f"Sending query to {self.editor}")
         response_impala = self.ajax(self._endpoint_execute_impala.format(editor=self.editor), payload=mydata)
