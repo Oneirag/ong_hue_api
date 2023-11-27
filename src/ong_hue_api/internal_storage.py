@@ -229,7 +229,7 @@ class KeyringStorage:
     def get_cookies(self) -> dict:
         """Returns a dict of cookies from the keyring storage"""
         cookies = self.__read_dict(self.key_cookies)
-        expired = any(c.expires < time.time() for c in cookies)
+        expired = any(c.expires < time.time() if c.expires else False for c in cookies)
         if expired:
             return dict()       # Empty dict, cookies are expired
         else:
