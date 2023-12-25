@@ -1,6 +1,6 @@
 [project]
 name = "ong_hue_api"
-version = "0.3.0"
+version = "0.4.0"
 # license = {file = "LICENSE.txt"}
 authors = [
     { email = "oneirag@yahoo.es", name = "Oscar Neira" }
@@ -32,6 +32,6 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
-# Not needed anymore
-# liquidaciones = "ong_gesfincas.liquidaciones_gui:main"
 hue_api = "ong_hue_api.__main__:main"
+delete_storage = "ong_hue_api.internal_storage:delete_all"
+

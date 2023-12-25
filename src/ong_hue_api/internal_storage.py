@@ -5,15 +5,15 @@ Includes a tkinter dialog to change hue server and password
 from __future__ import annotations
 
 import os
-import pickle
 import time
 import urllib.parse
 from tkinter import *
 from tkinter import messagebox
 from tkinter.simpledialog import Dialog
 
-import keyring
 import requests
+import requests.cookies
+from ong_utils import InternalStorage
 
 from ong_hue_api import name, is_windows
 if is_windows:
@@ -45,17 +45,14 @@ def check_server(server: str) -> str | None:
 class KeyringStorage:
     """Module to deal with username, passwords, etc., stored in computer keyring"""
 
-    # Encoding used for binary pickle to work
-    PICKLE_ENCODING = 'ISO-8859-1'
-
     def __init__(self, logger=None, check=True, username: str = None):
         """
-        Inits the keyring wrapper.
+        Init the keyring wrapper.
         :param logger: a logger instance (or creates a new one)
         :param check: True to check if server address is valid, and also if username and password are
         :param username: optional name (to override default login username)
         """
-        self.name = name
+        self.name = name                # Current computer name
         self.logger = logger or create_logger()
         self.__username = None
         default_user = self.username
@@ -163,19 +160,40 @@ class KeyringStorage:
                 self.logger.debug("Password OK")
                 return True
 
+    def __get_value(self, key: str):
+        return InternalStorage(key).get_value(self.username)
+
+    def __set_value(self, key: str, value):
+        return InternalStorage(key).store_value(self.username, value)
+
     @property
     def password(self) -> str:
         """Gets password from keyring. If not password is found in keyring, a loging screen is shown for the user"""
-        password = keyring.get_password(self.key_password, self.username)
-        return password
+        return self.__get_value(self.key_password)
 
     def set_password(self, password: str):
         """Shows a password screen for the user to enter a new password and stores it in the keyring"""
-        keyring.set_password(self.key_password, self.username, password)
+        self.__set_value(self.key_password, password)
 
     def set_cookies(self, session):
         """Stores all cookies from given session in the keyring"""
-        self.__write_dict(self.key_cookies, session.cookies)
+        cookies = session.cookies
+        cookie_dict = [dict(name=c.name, value=c.value, domain=c.domain, path=c.path, expires=c.expires)
+                       for c in cookies]
+        self.__set_value(self.key_cookies, cookie_dict)
+
+    def get_cookies(self) -> list:
+        """Returns a list of cookies from the keyring storage"""
+        cookies_dict = self.__get_value(self.key_cookies)
+        if not cookies_dict:
+            return list()
+        cookies = [requests.cookies.create_cookie(**c) for c in cookies_dict]
+        expired = any(c.is_expired() for c in cookies)
+        if expired:
+            return list()       # Empty dict, cookies are expired
+        else:
+            return cookies
+
 
     def delete(self, cookies: bool = False, hue_server: bool = False, password: bool = False, all: bool = False):
         """
@@ -188,78 +206,47 @@ class KeyringStorage:
         :return: None
         """
         # Delete all information about the session (cookies, impala instance, notebook...)
+        keys_to_delete = []
         if cookies or all:
-            try:
-                keyring.delete_password(self.key_cookies, self.username)
-                keyring.delete_password(self.key_impala_session_notebook, self.username)
-                keyring.delete_password(self.key_databases, self.username)
-            except:
-                pass
+            keys_to_delete.append(self.key_cookies)
+            keys_to_delete.append(self.key_impala_session_notebook)
+            keys_to_delete.append(self.key_databases)
         if hue_server or all:
-            try:
-                keyring.delete_password(self.key_server, self.username)
-            except:
-                pass
+            keys_to_delete.append(self.key_server)
         if password or all:
+            keys_to_delete.append(self.key_password)
+
+        for delete_key in keys_to_delete:
             try:
-                keyring.delete_password(self.key_password, self.username)
-            except:
-                pass
-
-    def __write_dict(self, key: str, input_dict: dict):
-        """Writes given dict to the given key in the keyring"""
-        value = pickle.dumps(input_dict)
-        if not is_windows:
-            value = urllib.parse.quote(value.decode(self.PICKLE_ENCODING))
-        else:
-            value = value.decode(self.PICKLE_ENCODING)
-        keyring.set_password(key, self.username, value)
-        value2 = keyring.get_password(key, self.username)
-        assert value2 == value, "Dictionary was not properly stored in keyring"
-
-    def __read_dict(self, key: str) -> dict:
-        """Reads a dict pickled in the storage"""
-        value = keyring.get_password(key, self.username)
-        if is_windows:
-            retval = pickle.loads(value.encode(self.PICKLE_ENCODING)) if value is not None else dict()
-        else:
-            retval = pickle.loads(urllib.parse.unquote(value).encode(self.PICKLE_ENCODING))
-        return retval
-
-    def get_cookies(self) -> dict:
-        """Returns a dict of cookies from the keyring storage"""
-        cookies = self.__read_dict(self.key_cookies)
-        expired = any(c.expires < time.time() for c in cookies)
-        if expired:
-            return dict()       # Empty dict, cookies are expired
-        else:
-            return cookies
+                InternalStorage(delete_key).remove_stored_value(self.username)
+                self.logger.debug(f"Deleted key: {delete_key}")
+            except Exception as e:
+                self.logger.error(f"Could not delete {delete_key}: {e}")
 
     @property
     def hue_server(self):
         """Returns server address from the keyring storage"""
-        server = check_server(keyring.get_password(self.key_server, self.username))
+        server = check_server(self.__get_value(self.key_server))
         return server
 
     def set_hue_server(self, server: str):
         """Stores server address in the keyring storage"""
-        keyring.set_password(self.key_server, self.username, check_server(server))
+        self.__set_value(self.key_server, server)
 
     @property
     def impala_session_notebook(self) -> dict | None:
-        return self.__read_dict(self.key_impala_session_notebook)
+        return self.__get_value(self.key_impala_session_notebook)
 
     def set_impala_session_notebook(self, impala, session, notebook):
         input_dict = dict(impala=impala, session=session, notebook=notebook)
-        self.__write_dict(self.key_impala_session_notebook, input_dict)
+        self.__set_value(self.key_impala_session_notebook, input_dict)
 
     @property
     def databases(self) -> list | None:
-        return self.__read_dict(self.key_databases).get("databases")
+        return self.__get_value(self.key_databases)
 
     def set_databases(self, databases):
-        input_dict = dict(databases=databases)
-        self.__write_dict(self.key_databases, input_dict)
+        self.__set_value(self.key_databases, databases)
 
 
 class ConfigDialog(Dialog):
@@ -349,8 +336,8 @@ def delete_all():
 if __name__ == '__main__':
 
 
-    # delete_all()
-    # exit(0)
+    delete_all()
+    exit(0)
 
     info = KeyringStorage(create_logger())
 

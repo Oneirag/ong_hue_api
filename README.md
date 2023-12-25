@@ -20,6 +20,10 @@ Package to connect to a hue website and download queries like an API.
 At first execution, program will ask for the hue url and the current user password. Then it will be stored in the computer keyring
 
 ![configuration.png](imgs/configuration.png)
+
+### Errors after upgrading version
+In case of errors caused by new tool versions, delete cache running command line script `delete_storage`
+
 ### Limitations
 Hue web can only download up to 1.000.000 rows.
 

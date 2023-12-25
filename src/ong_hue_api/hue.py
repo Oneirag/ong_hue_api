@@ -113,7 +113,7 @@ class Hue:
         self.log(self._DEBUG, f"Returned: {resp} with headers {resp.headers}")
         return resp
 
-    def _get_databases(self) -> dict:
+    def _get_databases(self) -> list:
         """Gets the list of the databases that a user can access to"""
         for url in self._endpoint_autocomplete_:
             json_db = self.ajax(url,
@@ -121,7 +121,8 @@ class Hue:
                                                        cluster=self.impala_cluster))
             if "databases" in json_db:
                 return json_db['databases']
-        return dict()
+        self.log("error", "Could not read list of databases", show_notification=True)
+        return list()
 
     def __init__(self, force_new_login: bool = False, show_notifications: bool = True, path=None,
                  debug=True, fast: bool = True, keyring_storage: KeyringStorage = None,
@@ -161,7 +162,8 @@ class Hue:
             self.keyring_storage.delete(cookies=True)
         reuse_session = False
         if self.keyring_storage.get_cookies() and not force_new_login:
-            self.__requests_session.cookies.update(self.keyring_storage.get_cookies())
+            for ck in self.keyring_storage.get_cookies():
+                self.__requests_session.cookies.set_cookie(ck)
             self.headers["X-CSRFToken"] = self.__requests_session.cookies.get('csrftoken', "")
             try:
                 res = self.ajax(self._endpoint_default_app + "?_={}".format(timestamp()))
