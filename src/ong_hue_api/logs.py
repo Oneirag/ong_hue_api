@@ -3,7 +3,8 @@ import logging.handlers
 import os
 from functools import partial
 
-from ong_hue_api import name, is_windows
+from ong_hue_api import name
+from ong_utils import is_windows
 if is_windows:
     from win11toast import notify
 

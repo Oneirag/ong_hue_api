@@ -4,6 +4,12 @@ import os
 import unittest
 
 from tests.config_test import sample_queries, sample_hdfs_path, test_username, test_server, test_password, test_editor
+try:
+    # If there is internal, private information, use it instead of public one
+    from tests.config_test_internal import sample_queries, sample_hdfs_path, test_username, test_server, \
+        test_password, test_editor
+except:
+    pass
 from ong_hue_api.internal_storage import KeyringStorage
 
 

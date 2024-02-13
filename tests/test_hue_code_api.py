@@ -3,6 +3,7 @@ General functionality_tests of ong_hue_api
 """
 from __future__ import annotations
 
+import os.path
 import unittest
 
 from ong_hue_api.hue import Hue
@@ -83,6 +84,14 @@ class TestHueCodeApi(BaseTestHueApi):
                                             local_filename=query_config.expected_filename)
             self.verify_download(retval, query_config.expected_size, expected_filename)
         self.remove_temp_files()
+
+    def test_hdfs_upload_file(self):
+        """Test uploading file to hdfs"""
+        filename = os.path.abspath("data/test_upload_file.txt")
+        from tests.config_test_internal import sample_hdfs_upload_path
+        res = self.hue.upload_file(filename, sample_hdfs_upload_path)
+        self.assertTrue(res, f"Error uploading {filename}")
+        pass
 
     def remove_temp_files(self):
         # Keep temp files

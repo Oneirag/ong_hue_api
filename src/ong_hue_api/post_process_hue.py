@@ -1,31 +1,13 @@
 import pandas as pd
-from ong_hue_api import is_windows
-if is_windows:
-    from win32com import client, __gen_path__
-import logging
-import re
-from pathlib import Path
-from shutil import rmtree
+from ong_utils.office.office_base import ExcelBase
+from ong_hue_api.logs import create_logger
+from ong_utils import is_windows
 
-class Excel:
 
-    client_name = "Excel.Application"
+class Excel(ExcelBase):
 
     def __init__(self):
-        try:
-            self.client = client.gencache.EnsureDispatch(self.client_name)
-            self.client.Visible = True
-        except AttributeError as e:
-            # Sometimes we might have to clean the cache to open
-            m_failing_cache = re.search(r"win32com\.gen_py\.([\w\-]+)", str(e))
-            if m_failing_cache:
-                cache_folder_name = m_failing_cache.group(1)
-                logging.warning(f"Cleaning cache for '{cache_folder_name}'")
-                cache_folder = Path(__gen_path__).joinpath(cache_folder_name)
-                rmtree(cache_folder)
-                self.client = client.gencache.EnsureDispatch(self.client_name)
-            else:
-                raise
+        super().__init__(create_logger())
 
     def workbook(self, workbook_name: str):
         """Returns the first workbook which name matches given one"""

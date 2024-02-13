@@ -5,24 +5,20 @@ Includes a tkinter dialog to change hue server and password
 from __future__ import annotations
 
 import os
-import time
+import platform
 import urllib.parse
-from tkinter import *
-from tkinter import messagebox
-from tkinter.simpledialog import Dialog
 
 import requests
 import requests.cookies
-from ong_utils import InternalStorage
+from ong_utils import InternalStorage, get_current_domain, get_current_user
 
-from ong_hue_api import name, is_windows
-if is_windows:
-    import win32security
+from ong_utils.ui import UiField, simple_dialog
+from ong_utils.credentials import verify_credentials
 
 from ong_hue_api.logs import create_logger
 
 
-def check_server(server: str) -> str | None:
+def check_server(server: str, **kwargs) -> str | None:
     """Gets server address and returns it properly formatted or None if it is invalid"""
     if not server:
         return None
@@ -42,6 +38,31 @@ def check_server(server: str) -> str | None:
         return None
 
 
+def hue_config_dialog(default_password: str = "", default_hue_server: str = "") -> dict:
+    field_list = [UiField(name="domain",  # Key of the dict in the return dictionary and for validation functions
+                          label="Domain",  # Name to the shown for the user
+                          default_value=get_current_domain(),  # Default value to be used
+                          editable=False,  # Not editable
+                          ),
+                  UiField(name="username", label="User", default_value=get_current_user(),
+                          editable=False,
+                          ),
+                  UiField(name="password", label="Password", default_value=default_password or "",
+                          show="*",  # Hides password by replacing with *
+                          validation_func=verify_credentials,
+                          # The validation function receives values of all fields, so should accept extra **kwargs
+                          ),
+                  UiField(name="server", label="Hue server",
+                          default_value=default_hue_server or "",
+                          validation_func=check_server,
+                          width=40      # Make this field longer
+                          )]
+    # Call the function to open the login window with custom options
+    res = simple_dialog(title="Hue api", description="Parameters needed to log in to hue",
+                        field_list=field_list)
+    return res
+
+
 class KeyringStorage:
     """Module to deal with username, passwords, etc., stored in computer keyring"""
 
@@ -52,7 +73,7 @@ class KeyringStorage:
         :param check: True to check if server address is valid, and also if username and password are
         :param username: optional name (to override default login username)
         """
-        self.name = name                # Current computer name
+        self.name = platform.node()                # Current computer name
         self.logger = logger or create_logger()
         self.__username = None
         default_user = self.username
@@ -66,12 +87,12 @@ class KeyringStorage:
     def check_and_ask(self, password: str = None):
         """Checks if server/password are valid. If not, a dialog appears for asking for username and password"""
         if not self.check(password):
-            retval = ConfigDialog(self).result
-            if retval is None:
+            retval = hue_config_dialog(default_password=password, default_hue_server=self.hue_server)
+            if not retval:
                 self.logger.error("HUE server or password are invalid. Exiting...")
                 exit(-1)
             else:
-                server, password = retval
+                server, password = retval['server'], retval['password']
                 self.set_hue_server(server)
                 self.set_password(password)
 
@@ -142,23 +163,14 @@ class KeyringStorage:
         else:
             try:
                 self.logger.debug(f"Checking password of {self.domain}\\{self.username}")
-                if is_windows:
-                    hUser = win32security.LogonUser(
-                        self.username,
-                        self.domain,
-                        password,
-                        # win32security.LOGON32_LOGON_NETWORK,
-                        win32security.LOGON32_LOGON_INTERACTIVE,
-                        win32security.LOGON32_PROVIDER_DEFAULT
-                    )
+                if verify_credentials(self.username, self.domain, password):
+                    self.logger.debug("Password OK")
+                    return True
                 else:
-                    return True     # Not windows...password is assumed to be valid
+                    return False
             except Exception as e:
                 self.logger.error(e.strerror)
                 return False
-            else:
-                self.logger.debug("Password OK")
-                return True
 
     def __get_value(self, key: str):
         return InternalStorage(key).get_value(self.username)
@@ -193,7 +205,6 @@ class KeyringStorage:
             return list()       # Empty dict, cookies are expired
         else:
             return cookies
-
 
     def delete(self, cookies: bool = False, hue_server: bool = False, password: bool = False, all: bool = False):
         """
@@ -249,83 +260,6 @@ class KeyringStorage:
         self.__set_value(self.key_databases, databases)
 
 
-class ConfigDialog(Dialog):
-
-    def __init__(self, keyring: KeyringStorage, username: str = None):
-        title = "Api de Hue"
-        self.keyring = keyring
-        self.hue_server = keyring.hue_server
-        self.password = keyring.password
-        default_username = ((self.keyring.domain + "\\") if self.keyring.domain else "") + self.keyring.username
-        self.username = username or default_username
-        parent = Tk()
-        parent.withdraw()
-        Dialog.__init__(self, parent=parent, title=title)
-
-    def getresult(self):
-        return self.entry_server.get(), self.entry_password.get()
-
-    def destroy(self):
-        self.entry_server = None
-        self.entry_password = None
-        Dialog.destroy(self)
-
-    def body(self, master):
-        # self.geometry("300x180")
-        self.geometry("350x200")    # Make it a bit bigger so it can be better seen in macos
-        padx = 5
-        pady = 2
-
-        row = 0
-        w = Label(master, text="Configuracion del acceso a HUE", justify=CENTER)
-        w.grid(row=row, padx=padx, pady=pady * 2, sticky=W)
-        row += 1
-        w = Label(master, text="Url de HUE (copiarla del navegador):", justify=LEFT)
-        w.grid(row=row, padx=padx, pady=pady, sticky=W)
-        row += 1
-        self.entry_server = Entry(master, width=150, name="server")
-        self.entry_server.grid(row=row, padx=padx, pady=pady, sticky=W + E)
-        row += 1
-        w = Label(master, text=f"Password para {self.username}: ", justify=LEFT)
-        w.grid(row=row, padx=padx, pady=pady, sticky=W)
-        row += 1
-        self.entry_password = Entry(master, width=150, name="password", show="*")
-        self.entry_password.grid(row=row, padx=padx, pady=pady, sticky=W + E)
-        row += 1
-        for widget, value in [(self.entry_server, self.hue_server), (self.entry_password, self.password)]:
-            if value:
-                widget.insert(0, value)
-                # self.entry.select_range(0, END)
-        return self.entry_password  # <- This will receive focus
-
-    def validate(self):
-        try:
-            server, password = retval = self.getresult()
-        except ValueError:
-            messagebox.showwarning(
-                "Illegal value",
-                self.errormessage + "\nPlease try again",
-                parent=self
-            )
-            return 0
-        if not check_server(server):
-            messagebox.showwarning(
-                "Error: " + self.title(),
-                "El nombre del servidor no es correcto" + "\nInténtelo de nuevo",
-                parent=self
-            )
-            return 0
-        if not self.keyring.check(password, server):
-            messagebox.showwarning(
-                "Error: " + self.title(),
-                "La contraseña no es válida." + "\nInténtelo de nuevo",
-                parent=self
-            )
-            return 0
-        self.result = retval
-        return 1
-
-
 def delete_all():
     """Deletes all keyring values for current logged-in user and for demo user"""
     for username in (None, "demo"):
@@ -336,8 +270,8 @@ def delete_all():
 if __name__ == '__main__':
 
 
-    delete_all()
-    exit(0)
+#    delete_all()
+#    exit(0)
 
     info = KeyringStorage(create_logger())
 

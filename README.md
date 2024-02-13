@@ -15,6 +15,7 @@ Package to connect to a hue website and download queries like an API.
 * For hdfs
   * List contents of any folder
   * Download any file from hdfs to local computer
+  * Upload files (probably, small ones) to hdfs folder
 
 ### Prerequisites
 At first execution, program will ask for the hue url and the current user password. Then it will be stored in the computer keyring
@@ -114,6 +115,8 @@ downloaded_file = hue.download_file("/root/bigfile.pkl")
 downloaded_file = hue.download_file("/root/bigfile.pkl", local_filename="not_so_big.pkl")
 # Downloads bigfile.pkl in current directory with the name not_so_big.pkl in folder c:\ and returns filename
 downloaded_file = hue.download_file("/root/bigfile.pkl", local_filename="not_so_big.pkl", path="C:\\")
+# Uploads local file to remote folder
+success = hue.upload_file(filename="c:\\mylocalfile.txt", destination_path="/folder/in/hdfs" )
 
 ##########################################################
 #   Logout (not recommended as login process is too slow)

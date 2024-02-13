@@ -8,8 +8,8 @@ import pandas as pd
 import requests
 from tqdm import tqdm
 
-
 from ong_hue_api import *
+from ong_utils import is_windows
 if is_windows:
     from win11toast import notify
 from ong_hue_api.internal_storage import KeyringStorage
@@ -61,7 +61,7 @@ class Hue:
 
     @property
     def base_url(self):
-        url = self.keyring_storage.hue_server
+        url = self.keyring_storage.hue_server or ""
         if not url.endswith("/"):
             url += "/"
         return url
@@ -146,7 +146,14 @@ class Hue:
         self.keyring_storage = keyring_storage or KeyringStorage(self.__logger, check=not fast)
         self.keyring_storage.logger = self.__logger
         self.__requests_session = requests.Session()
+        # Hide requests user agent
+        self.__requests_session.headers.update({'User-Agent':
+                                                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                                                    '(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                                                })
         self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                          'Chrome/121.0.0.0 Safari/537.36',
             'Accept': '*/*',
             'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
             'Cache-Control': 'no-cache',
@@ -587,9 +594,40 @@ class Hue:
         self.log(self._INFO, f"File {local_filename} downloaded", show_notification=local_filename)
         return local_filename
 
+    def upload_file(self, filename: str, destination_path: str) -> bool:
+        """
+        Uploads a file to a given directory using filebrowser. Fails if file already exists,
+        if folder is not writable...check logs for reason
+        :param filename: full path of the local filename to upload
+        :param destination_path: remote directory where upload file
+        :return: True if file could be uploaded, False otherwise.
+        """
+        self.log(self._DEBUG, f"Uploading '{filename}' to directory '{destination_path}")
+        with open(filename, 'rb') as f:
+            files = {
+                'dest': (None, destination_path),
+                'hdfs_file': f,
+            }
+            # Remove Content-Type to avoid conflicts
+            headers = self.headers.copy()
+            headers.pop('Content-Type')
+
+            res = self._request(f"/filebrowser/upload/file?dest={destination_path}", method="POST",
+                          files=files, headers=headers)
+        try:
+            res.raise_for_status()
+            status = res.json().get("status", -1)
+            if status != -1:
+                return True
+            self.log(self._ERROR, res.json().get('data', "Failed for unknown reason"))
+            return False
+        except:
+            return False
+
 
 if __name__ == '__main__':
     pass
     # KeyringStorage().delete(all=True)
+    KeyringStorage()
     # hue.log("info", "Process finished")
     hue = Hue()
