@@ -6,4 +6,4 @@ win11toast; platform_system == "Windows"          # For sending notifications
 tqdm                # Nice progress bar
 # "loguru",         # Easier logs
 ong_utils >= 0.6.0  # Adds ui, office...
-ong_utils[credentials] > 0.6.0
+ong_utils[credentials] >= 0.6.0
