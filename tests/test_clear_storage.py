@@ -21,6 +21,6 @@ class TestKeyringStorage(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    kr = KeyringStorage()
+    kr = KeyringStorage(check=False)
     kr.delete(all=True)
     unittest.main()
