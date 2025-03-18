@@ -1,9 +1,13 @@
 requests >=2.31.0
-pandas              # for reading data
+pandas~=2.2.3
 openpyxl            # for writing xlsx files
 keyring             # For securely storing/retrieving passwords
-win11toast; platform_system == "Windows"          # For sending notifications
-tqdm                # Nice progress bar
+win11toast~=0.35; platform_system == "Windows"          # For sending notifications
+tqdm~=4.66.5
 # "loguru",         # Easier logs
-ong_utils >= 0.6.0  # Adds ui, office...
-ong_utils[credentials] >= 0.6.0
+ong_utils >= 0.6.3  # Adds ui
+ong_utils[credentials] > 0.6.3
+ong_utils[office] > 0.6.3; platform_system == "Windows"          # For manipulating opened Excel files
+
+python-dotenv~=1.0.1
+ong_utils[jwt] > 0.6.3

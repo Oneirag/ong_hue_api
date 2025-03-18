@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import logging
-import urllib.parse
 import os
+import urllib.parse
 
 import pandas as pd
 import requests
+from ong_utils import is_windows
 from tqdm import tqdm
 
 from ong_hue_api import *
-from ong_utils import is_windows
+
 if is_windows:
     from win11toast import notify
 from ong_hue_api.internal_storage import KeyringStorage
@@ -23,14 +24,14 @@ class Hue:
     """Main class to manage Hue interface"""
 
     # Endpoints used in the HUE API
-    _endpoint_default_app = "desktop/api2/user_preferences/default_app"     # Used for check that login data is valid
+    _endpoint_default_app = "desktop/api2/user_preferences/default_app"  # Used for check that login data is valid
     _endpoint_get_config = [
         "desktop/api2/get_config/",  # Old hue versions
         "api/v1/get_config/",  # In the demo version
     ]
-    _endpoint_autocomplete_ = [
+    _endpoint_autocomplete = [
         "notebook/api/autocomplete/",  # Used for listing DBs
-        "api/v1/editor/autocomplete/"   # New version (but previous works)
+        "api/v1/editor/autocomplete/"  # New version (but previous works)
     ]
     _endpoint_login = "hue/accounts/login"
     _endpoint_create_impala = "desktop/api2/context/namespaces/{editor}"
@@ -39,9 +40,9 @@ class Hue:
     _endpoint_editor = "hue/editor"
     _endpoint_execute_impala = "notebook/api/execute/{editor}"
     _endpoint_download = "notebook/download"
-    _endpoint_fetch_data = [ "notebook/api/fetch_result_data",
-                             "api/v1/editor/fetch_result_data", # New hue (demo version)
-                             ]
+    _endpoint_fetch_data = ["notebook/api/fetch_result_data",
+                            "api/v1/editor/fetch_result_data",  # New hue (demo version)
+                            ]
     _endpoint_check_status = "notebook/api/check_status"
     _endpoint_jobs = "desktop/api2/context/clusters/jobs"
     _endpoint_logout = "accounts/logout"
@@ -58,6 +59,9 @@ class Hue:
 
     # For iter_content, chunk_size
     content_chunk_size = 1024
+
+    _USER_AGENT = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                   'Chrome/121.0.0.0 Safari/537.36')
 
     @property
     def base_url(self):
@@ -76,7 +80,7 @@ class Hue:
          a text with the path of a file to show notification that opens the given file when clicking notification
         :return:
         """
-        if self.debug or level != self._DEBUG:      # Makes it a little faster...
+        if self.debug or level != self._DEBUG:  # Makes it a little faster...
             getattr(self.__logger, level)(msg, stacklevel=2)
         if show_notification and self.show_notifications and is_windows:
             if isinstance(show_notification, str):
@@ -115,18 +119,22 @@ class Hue:
 
     def _get_databases(self) -> list:
         """Gets the list of the databases that a user can access to"""
-        for url in self._endpoint_autocomplete_:
+        internal_error = False
+        for url in self._endpoint_autocomplete:
             json_db = self.ajax(url,
                                 payload=format_payload(snippet={"type": self.editor_type, "source": "data"},
                                                        cluster=self.impala_cluster))
             if "databases" in json_db:
                 return json_db['databases']
+            elif 500 == json_db.get("code"):
+                self.log("warning", f"Internal error reading database list {json_db['message']}")
+                internal_error = True
         self.log("error", "Could not read list of databases", show_notification=True)
         return list()
 
     def __init__(self, force_new_login: bool = False, show_notifications: bool = True, path=None,
                  debug=True, fast: bool = True, keyring_storage: KeyringStorage = None,
-                 editor_type: str = None):
+                 editor_type: str = None, use_system_credentials: bool = True):
         """
         Initializes hue session. First, attempts to reuse cookies from an old session,
         otherwise logs in with user and password
@@ -137,23 +145,24 @@ class Hue:
         :param fast: True (default) to skip checks, reconnections, etc. and make process faster (but less reliable)
         :param keyring_storage: a KeyRingStorage instance to use. If None (default) a default one will be created
         :param editor_type: Name of the editor (impala, hive...). Defaults to impala
+        :param use_system_credentials: True (default) to assume that hue user will be current logged-in user, and then
+        password will be verified against system credentials. False to allow change user and do not check password
+        validity
         """
         self.editor = editor_type or "impala"  # Defaults to impala
         self.show_notifications = show_notifications
         self.debug = debug
         self.__logger = create_logger(path or os.getcwd(), level=logging.DEBUG if self.debug else logging.INFO)
         # Skips check of username and server if fast is true
-        self.keyring_storage = keyring_storage or KeyringStorage(self.__logger, check=not fast)
+        self.keyring_storage = keyring_storage or KeyringStorage(self.__logger, check=not fast,
+                                                                 use_system_credentials=use_system_credentials)
+        # self.keyring_storage = keyring_storage or KeyringStorage(self.__logger)
         self.keyring_storage.logger = self.__logger
         self.__requests_session = requests.Session()
         # Hide requests user agent
-        self.__requests_session.headers.update({'User-Agent':
-                                                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                                                    '(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-                                                })
+        self.__requests_session.headers.update({'User-Agent': self._USER_AGENT})
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
-                          'Chrome/121.0.0.0 Safari/537.36',
+            'User-Agent': self._USER_AGENT,
             'Accept': '*/*',
             'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
             'Cache-Control': 'no-cache',
@@ -185,11 +194,10 @@ class Hue:
             # Session was not valid, get user and password
             user = self.keyring_storage.username
             password = self.keyring_storage.password
-            if not self.keyring_storage.check(password):
-                self.log(self._ERROR,
-                         "Invalid password. Relaunch process to update it",
-                         show_notification=True)
-                exit(-1)
+            self.keyring_storage.check_and_ask(password)
+            # User/pwd might have changed, reread
+            user = self.keyring_storage.username
+            password = self.keyring_storage.password
             self.notebook = None
             self.impala = None
             self.session = None
@@ -203,8 +211,8 @@ class Hue:
         interpreters_dict = {e['name']: e for e in interpreters}
         self.editor_cfg = interpreters_dict.get(self.editor.capitalize())
         if self.editor_cfg is None:
-            raise ValueError(f"Editor of type {self.editor} not found. "
-                             f"Valid editors: {','.join(list(interpreters_dict.keys()))}")
+            raise ValueError(f"Editor of type {self.editor} not found. Create hue object using parameter editor_type "
+                             f"among valid editors: {','.join(list(interpreters_dict.keys()))}")
         self.log(self._DEBUG, f"Editor config: {self.editor_cfg}")
         self._create_notebook_impala_session(force_new_login)
         self.snippet_id = new_uuid()
@@ -250,7 +258,12 @@ class Hue:
                        server="LDAP", next="/")
         login_res = self._request(self._endpoint_login, payload=payload, headers=self.headers)
         if login_res.url.endswith(self._endpoint_login):
-            raise ValueError("Login failed. Are username and/or password correct?")
+            # Could not log in. Removes previous password and exits
+            self.keyring_storage.delete(password=True)
+            self.log(self._ERROR, "Login failed, exiting. "
+                                  "Check username and/or password. "
+                                  "Next execution will ask for credentials",
+                     show_notification=True, exception=ValueError)
         return login_res
 
     def _create_notebook_impala_session(self, force_new: bool = True):
@@ -472,7 +485,7 @@ class Hue:
         """Gets the number of rows of a certain query. Returns None on any error"""
         row_query = f"with t as ( {query} ) select count(*) from t"
         if self.editor == "hive":
-            row_query += " limit 1"     # it does not work without it
+            row_query += " limit 1"  # it does not work without it
         res = self.execute_query(row_query, format="pandas", log_query=False)
         if res is not None and not res.empty:
             return res.iat[0, 0]
@@ -548,7 +561,7 @@ class Hue:
         """Gets a dictionary {name: path} with the list of contents of a given path, optionally
         returning files that contain a certain pattern"""
 
-        ok = is_hdfs_s3(path)       # Will raise exception if fails
+        ok = is_hdfs_s3(path)  # Will raise exception if fails
         retval = dict()
         has_more_pages = True
         page_num = 1
@@ -613,7 +626,7 @@ class Hue:
             headers.pop('Content-Type')
 
             res = self._request(f"/filebrowser/upload/file?dest={destination_path}", method="POST",
-                          files=files, headers=headers)
+                                files=files, headers=headers)
         try:
             res.raise_for_status()
             status = res.json().get("status", -1)
@@ -627,7 +640,8 @@ class Hue:
 
 if __name__ == '__main__':
     pass
-    # KeyringStorage().delete(all=True)
-    KeyringStorage()
+    # KeyringStorage.delete(all=True)
+    # KeyringStorage()
     # hue.log("info", "Process finished")
-    hue = Hue()
+    hue = Hue(use_system_credentials=False)
+    # hue = Hue()

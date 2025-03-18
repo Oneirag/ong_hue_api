@@ -124,3 +124,25 @@ success = hue.upload_file(filename="c:\\mylocalfile.txt", destination_path="/fol
 # Optional if you want to close session and not reuse it. Not needed and not recommened
 # hue.logout()
 ```
+# HUE REST API
+
+## Interact with the actual HUE REST api
+Following instructions from https://docs.gethue.com/developer/api/rest/, executes queries and returns them as pandas dataframes
+
+To use the api:
+1. Create a `.env` file in the directory where code will be run with the following content(modify HUE_REST_API_SERVER according your needs):
+
+```text
+HUE_REST_API_SERVER=https://demo.gethue.com/
+HUE_REST_API_LOGGING=DEBUG
+HUE_REST_API_ROWS=100000
+```
+2. Sample code:
+```python
+from ong_hue_api.hue_rest_api import HueRest
+
+hue = HueRest()
+# Returns your query as a pandas dataframe
+df = hue.execute_query("your sql goes here")
+
+```

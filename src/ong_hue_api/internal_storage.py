@@ -20,6 +20,7 @@ from ong_hue_api.logs import create_logger
 
 def check_server(server: str, **kwargs) -> str | None:
     """Gets server address and returns it properly formatted or None if it is invalid"""
+    print(f"Checking server {server}")
     if not server:
         return None
     res = urllib.parse.urlparse(server, scheme='', allow_fragments=True)
@@ -38,18 +39,21 @@ def check_server(server: str, **kwargs) -> str | None:
         return None
 
 
-def hue_config_dialog(default_password: str = "", default_hue_server: str = "") -> dict:
+def hue_config_dialog(default_password: str = "", default_hue_server: str = "",
+                      default_user: str = "",
+                      use_system_credentials: bool = True) -> dict:
     field_list = [UiField(name="domain",  # Key of the dict in the return dictionary and for validation functions
                           label="Domain",  # Name to the shown for the user
-                          default_value=get_current_domain(),  # Default value to be used
+                          default_value=get_current_domain() if use_system_credentials else "",  # Default value to be used
                           editable=False,  # Not editable
                           ),
-                  UiField(name="username", label="User", default_value=get_current_user(),
-                          editable=False,
+                  UiField(name="username", label="User",
+                          default_value=get_current_user() if use_system_credentials else default_user or "",
+                          editable=not use_system_credentials,        # Allow editing user if is not system user
                           ),
                   UiField(name="password", label="Password", default_value=default_password or "",
                           show="*",  # Hides password by replacing with *
-                          validation_func=verify_credentials,
+                          validation_func=verify_credentials if use_system_credentials else None,
                           # The validation function receives values of all fields, so should accept extra **kwargs
                           ),
                   UiField(name="server", label="Hue server",
@@ -66,18 +70,22 @@ def hue_config_dialog(default_password: str = "", default_hue_server: str = "") 
 class KeyringStorage:
     """Module to deal with username, passwords, etc., stored in computer keyring"""
 
-    def __init__(self, logger=None, check=True, username: str = None):
+    def __init__(self, logger=None, check=True, username: str = None, use_system_credentials: bool = True):
         """
         Init the keyring wrapper.
         :param logger: a logger instance (or creates a new one)
         :param check: True to check if server address is valid, and also if username and password are
         :param username: optional name (to override default login username)
+        :param use_system_credentials: True to use current system login user and verify system credentials. False to
+        avoid system credential check and allow for user to be modified
         """
+        self.__valid_server = None      # A Cache to avoid checking server
+        self.use_system_credentials = use_system_credentials
         self.name = platform.node()                # Current computer name
         self.logger = logger or create_logger()
         self.__username = None
-        default_user = self.username
-        self.is_logged_in_username = username is None or username == default_user
+        self.current_logged_user = get_current_user()
+        self.is_logged_in_username = username is None or username == self.current_logged_user
         if not self.is_logged_in_username:
             self.__username = username
         self.__domain = None if self.is_logged_in_username else ""
@@ -87,7 +95,9 @@ class KeyringStorage:
     def check_and_ask(self, password: str = None):
         """Checks if server/password are valid. If not, a dialog appears for asking for username and password"""
         if not self.check(password):
-            retval = hue_config_dialog(default_password=password, default_hue_server=self.hue_server)
+            retval = hue_config_dialog(default_password=password, default_hue_server=self.hue_server,
+                                       default_user=self.username,
+                                       use_system_credentials=self.use_system_credentials)
             if not retval:
                 self.logger.error("HUE server or password are invalid. Exiting...")
                 exit(-1)
@@ -95,13 +105,22 @@ class KeyringStorage:
                 server, password = retval['server'], retval['password']
                 self.set_hue_server(server)
                 self.set_password(password)
+                if not self.use_system_credentials:
+                    self.set_username(retval['username'])
 
     @property
     def username(self):
-        """Username, read from USERNAME environ variable"""
+        """Username, read from USERNAME environ variable if use_system_credentials, else read from keyring"""
         if not self.__username:
-            self.__username = os.environ.get('USERNAME', os.environ.get("USER"))
+            if self.use_system_credentials:
+                self.__username = get_current_user()
+            else:
+                self.__username = self.__get_value(self.key_username)
         return self.__username
+
+    def set_username(self, username: str):
+        self.__set_value(self.key_username, username)
+        self.__username = username
 
     @property
     def domain(self):
@@ -133,6 +152,10 @@ class KeyringStorage:
     def key_databases(self):
         return f"{self.name}:databases"
 
+    @property
+    def key_username(self):
+        return f"{self.name}:username"
+
     def check(self, password: str = None, server: str = None) -> bool:
         """
         Checks if server and username/password are valid.
@@ -142,9 +165,11 @@ class KeyringStorage:
         :param server: a server address (or None to use the stored one)
         :return: True if both server and password are valid, False otherwise
         """
-        test_server = server or self.hue_server
-        self.logger.debug(f"Checking hue server: {test_server}")
-        server = check_server(server) or self.hue_server
+        server = server or self.hue_server
+        if server is not None and server != self.__valid_server:
+            self.logger.debug(f"Checking hue server: {server}")
+            server = check_server(server) or self.hue_server
+            self.__valid_server = server
         if server is None:
             self.logger.debug("Server value is not valid")
             return False
@@ -163,9 +188,12 @@ class KeyringStorage:
         else:
             try:
                 self.logger.debug(f"Checking password of {self.domain}\\{self.username}")
-                if verify_credentials(self.username, self.domain, password):
-                    self.logger.debug("Password OK")
-                    return True
+                if verify_credentials(self.username, self.domain, password) or not self.use_system_credentials:
+                    if password:
+                        self.logger.debug("Password OK")
+                        return True
+                    else:
+                         return False
                 else:
                     return False
             except Exception as e:
@@ -173,10 +201,10 @@ class KeyringStorage:
                 return False
 
     def __get_value(self, key: str):
-        return InternalStorage(key).get_value(self.username)
+        return InternalStorage(key).get_value(self.current_logged_user)
 
     def __set_value(self, key: str, value):
-        return InternalStorage(key).store_value(self.username, value)
+        return InternalStorage(key).store_value(self.current_logged_user, value)
 
     @property
     def password(self) -> str:
@@ -206,18 +234,20 @@ class KeyringStorage:
         else:
             return cookies
 
-    def delete(self, cookies: bool = False, hue_server: bool = False, password: bool = False, all: bool = False):
+    @classmethod
+    def delete(cls, cookies: bool = False, hue_server: bool = False, password: bool = False, all: bool = False):
         """
         Deletes from keyring cookies, hue_server and password or all
         :param cookies: flag to delete cookies info, defaults to False
         :param hue_server:  flag to delete hue_server info, defaults to False
-        :param password:  flag to delete password info, defaults to False
+        :param password:  flag to delete password and username info, defaults to False
         :param all:  flag to delete all info, defaults to False. If True overrides the rest of flags, if False this flag
         is ignored and individual flags prevail
         :return: None
         """
         # Delete all information about the session (cookies, impala instance, notebook...)
         keys_to_delete = []
+        self = KeyringStorage(use_system_credentials=False, check=False)     # Avoid asking for credentials
         if cookies or all:
             keys_to_delete.append(self.key_cookies)
             keys_to_delete.append(self.key_impala_session_notebook)
@@ -226,10 +256,11 @@ class KeyringStorage:
             keys_to_delete.append(self.key_server)
         if password or all:
             keys_to_delete.append(self.key_password)
+            keys_to_delete.append(self.key_username)
 
         for delete_key in keys_to_delete:
             try:
-                InternalStorage(delete_key).remove_stored_value(self.username)
+                InternalStorage(delete_key).remove_stored_value(get_current_user())
                 self.logger.debug(f"Deleted key: {delete_key}")
             except Exception as e:
                 self.logger.error(f"Could not delete {delete_key}: {e}")
@@ -237,8 +268,13 @@ class KeyringStorage:
     @property
     def hue_server(self):
         """Returns server address from the keyring storage"""
-        server = check_server(self.__get_value(self.key_server))
-        return server
+        stored_server = self.__get_value(self.key_server)
+        if stored_server is not None and stored_server == self.__valid_server:
+            return stored_server
+        else:
+            server = check_server(self.__get_value(self.key_server))
+            self.__valid_server = server
+            return server
 
     def set_hue_server(self, server: str):
         """Stores server address in the keyring storage"""

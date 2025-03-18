@@ -1,6 +1,6 @@
 [project]
 name = "ong_hue_api"
-version = "0.5.0"       # Uses ong_utils for user validation and user interface
+version = "0.6.0"
 # license = {file = "LICENSE.txt"}
 authors = [
     { email = "oneirag@yahoo.es", name = "Oscar Neira" }
