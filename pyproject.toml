@@ -1,6 +1,6 @@
 [project]
 name = "ong_hue_api"
-version = "0.6.0"
+version = "0.6.1"
 # license = {file = "LICENSE.txt"}
 authors = [
     { email = "oneirag@yahoo.es", name = "Oscar Neira" }
