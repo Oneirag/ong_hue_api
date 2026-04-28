@@ -20,6 +20,12 @@ from tqdm import tqdm
 from dotenv import load_dotenv
 
 
+def _query2api(query: str) -> str:
+    """Prepares query for using in the API (removes extra lines)"""
+    query = " ".join(query.splitlines())
+    return query
+
+
 
 class CredentialsManager:
     """Class that manages username and password, storing it securely in keyring"""
@@ -170,6 +176,7 @@ class HueRest:
 
     def calculate_rows(self, query: str) -> int:
         """Calculates number of rows of a given query"""
+        query = _query2api(query)
         try:
             df = self.execute_query(f"with t as ( {query} ) select count(*) from t limit 1",
                                     calculate_rows=False, raise_exception_on_error=True)
@@ -182,6 +189,7 @@ class HueRest:
 
     def execute_query(self, sql: str, calculate_rows: bool=True, raise_exception_on_error: bool=False) -> pd.DataFrame | None:
         """Executes the given SQL, returning None in case of any error"""
+        sql = _query2api(sql)
         with OngTimer(msg=sql, logger=self.logger):
             params = {
                 'statement': sql,
@@ -260,7 +268,7 @@ if __name__ == '__main__':
             # f"limit 100",
 
 
-            # "SELECT count(*) FROM dl_mercados_cons.cons_pos_cartera_power_allegro WHERE dat_report='2023-09-15'",
+            "temp.csv": "SELECT count(*) FROM dl_mercados_cons.cons_pos_cartera_power_allegro WHERE dat_report='2023-09-15'",
             # 'select * from dl_modelos.buss_pro_simopt_margen limit 98676',
             # "SELECT * FROM dl_mercados_cons.cons_pos_cartera_power_allegro WHERE dat_report='2023-09-15'",
     }.items():
