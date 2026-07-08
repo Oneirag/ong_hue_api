@@ -7,6 +7,7 @@ import os
 import time
 from pathlib import Path
 from tkinter.messagebox import showerror
+import tkinter as _tk
 from typing import Tuple
 
 import pandas as pd
@@ -88,12 +89,68 @@ class HueRest:
         return f"{self.HUE_SERVER}{endpoint}"
 
     def __showerror_and_exit(self, msg_title: str, msg_content: str, log_msg: str, exit_code: int):
-        showerror("No autorizado", )
+        # Show a modal error to the user and prompt for credentials again instead of exiting immediately
+        # Try to show a topmost modal messagebox so it is visible even with many windows open
+        try:
+            root = _tk.Tk()
+            # Hide the root window but keep it as parent for the dialog
+            root.withdraw()
+            try:
+                root.attributes("-topmost", True)
+            except Exception:
+                # Some tkinter builds may not support attributes; ignore
+                pass
+            showerror(msg_title, msg_content, parent=root)
+            try:
+                root.destroy()
+            except Exception:
+                pass
+        except Exception:
+            # Fallback to logging if tkinter/messagebox fails for any reason
+            self.logger.error(f"{msg_title}: {msg_content}")
+
+        # Clear any stored secrets and ask user for new credentials
         self.credentials.clean_stored_password()
         if log_msg:
             self.logger.error(log_msg)
-        self.credentials.get_user_password()
-        exit(exit_code)
+
+        # Ask for new credentials (this call will show a dialog to the user)
+        try:
+            username, password = self.credentials.get_user_password()
+        except Exception as e:
+            # If obtaining credentials fails, log and exit
+            self.logger.error(f"Could not obtain credentials: {e}")
+            exit(exit_code)
+
+        # Try to authenticate with the provided credentials. If successful, update session and continue.
+        try:
+            data = { 'username': username, 'password': password }
+            response = self.session.post(self.get_url("/api/v1/token/auth"), data=data)
+            if response.status_code == 200:
+                json = response.json()
+                self.cookies = self.session.cookies.get_dict()
+                self.token = json.get('access')
+                self.refresh_token = json.get('refresh')
+                # Apply authorization header and persist tokens
+                if self.token:
+                    self.session.headers.update({'Authorization': f'Bearer {self.token}',
+                                                 "Content-Type": "application/x-www-form-urlencoded"})
+                try:
+                    self.credentials.store_token_cookies(self.token, self.refresh_token, self.cookies)
+                except Exception:
+                    self.logger.debug("Could not store token/cookies in credentials manager")
+                # Successful re-login; return to caller to continue operation
+                return
+            else:
+                # Authentication failed: show error and exit
+                try:
+                    showerror("Invalid credentials", "Credentials are invalid. Exiting...")
+                except Exception:
+                    self.logger.error("Invalid credentials. Exiting...")
+                exit(exit_code)
+        except Exception as e:
+            self.logger.error(f"Error while authenticating: {e}")
+            exit(exit_code)
 
     def __raise_not_auth_exception(self, exit_code: int):
         self.__showerror_and_exit("Unauthorized", "User does not have permission to perform the query. "
