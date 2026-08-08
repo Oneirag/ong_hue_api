@@ -144,5 +144,27 @@ from ong_hue_api.hue_rest_api import HueRest
 hue = HueRest()
 # Returns your query as a pandas dataframe
 df = hue.execute_query("your sql goes here")
-
 ```
+
+#### CLI / headless mode
+By default `HueRest` opens a tkinter dialog for missing credentials and shows
+modal error popups. On headless servers, scripts, or containers, that is not
+desirable. Use the CLI flavor instead: credentials are read from stdin (via
+`getpass`), errors are reported through the configured logger, and fatal
+errors are raised as `HueRestError` instead of calling `exit()`.
+
+```python
+# Option A: dedicated class
+from ong_hue_api.hue_rest_api_cli import HueRestCli
+
+hue = HueRestCli()
+# Returns your query as a pandas dataframe. Errors are raised, never exit()ed.
+df = hue.execute_query("your sql goes here", raise_exception_on_error=True)
+
+# Option B: same as A, using the UIMode parameter on the original class
+from ong_hue_api.hue_rest_api import HueRest, UIMode
+hue = HueRest(ui=UIMode.CLI)
+```
+
+The CLI mode also makes the module importable on machines without a
+display, because the `tkinter` import is now lazy.
